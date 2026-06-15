@@ -2,7 +2,7 @@
   "name": "汉字学习 – Chinese Vocab",
   "short_name": "汉字学习",
   "description": "Chinese vocabulary flashcards with daily streaks",
-  "start_url": "/",
+  "start_url": "/FLASHCRDOS/index.html",
   "display": "standalone",
   "background_color": "#FAFAFA",
   "theme_color": "#C62828",

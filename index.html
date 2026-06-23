@@ -645,14 +645,13 @@ function renderCard() {
   document.getElementById('card-front-content').innerHTML=`
     <div class="card-hanzi">${card.hanzi}</div>
     <div class="card-pinyin">${card.pinyin||''}</div>
-    <div class="tap-hint">Tap to reveal meaning</div>
-    <div class="flip-indicator">↺ tap to flip</div>
+    <div class="tap-hint" style="margin-top:1.5rem">↑ swipe up to reveal</div>
   `;
   document.getElementById('card-back-content').innerHTML=`
     <div class="card-hanzi-small">${card.hanzi}</div>
     <div class="card-meaning">${card.meaning||''}</div>
     ${card.example?`<div class="card-example">${card.example}</div>`:''}
-    <div class="flip-indicator" style="margin-top:1rem">↺ tap to flip back</div>
+    <div class="flip-indicator" style="margin-top:1rem">↓ swipe down to hide</div>
   `;
   updateProgress();
   showEncouragement();
@@ -731,62 +730,80 @@ function toast(msg,duration=2200){
   setTimeout(()=>el.classList.remove('show'),duration);
 }
 
-// ── SWIPE GESTURE (on the card-scene, not flashcard) ─────────
+// ── SWIPE GESTURE ─────────────────────────────────────────────
+// Left/Right → know / forgot
+// Up         → reveal back (flip to meaning)
+// Down       → hide back (flip to hanzi)
 (function(){
   const scene=document.getElementById('card-scene');
-  let sx=0,sy=0,dragging=false,moved=false,startTime=0;
+  let sx=0,sy=0,dragging=false,moved=false,direction=null;
 
   function onStart(x,y){
-    sx=x;sy=y;dragging=true;moved=false;startTime=Date.now();
+    sx=x; sy=y; dragging=true; moved=false; direction=null;
     scene.style.transition='none';
   }
+
   function onMove(x,y){
     if(!dragging) return;
-    const dx=x-sx,dy=y-sy;
-    if(!moved&&Math.abs(dx)<6&&Math.abs(dy)<6) return;
+    const dx=x-sx, dy=y-sy;
+    if(!moved && Math.abs(dx)<6 && Math.abs(dy)<6) return;
     moved=true;
-    if(Math.abs(dx)>Math.abs(dy)*0.7){
+
+    // lock direction on first significant move
+    if(!direction) direction=Math.abs(dx)>Math.abs(dy)?'h':'v';
+
+    if(direction==='h'){
+      // horizontal → swipe left/right preview
       scene.style.transform=`translateX(${dx}px) rotate(${dx*0.05}deg)`;
       const p=Math.min(Math.abs(dx)/90,1);
       document.getElementById('hint-know').style.opacity=dx>0?p:0;
       document.getElementById('hint-forgot').style.opacity=dx<0?p:0;
     }
+    // vertical moves handled on end only (no drag preview needed)
   }
-  function onEnd(x){
+
+  function onEnd(x,y){
     if(!dragging) return; dragging=false;
-    const dx=x-sx;
-    const elapsed=Date.now()-startTime;
+    const dx=x-sx, dy=y-sy;
     document.getElementById('hint-know').style.opacity=0;
     document.getElementById('hint-forgot').style.opacity=0;
-    // Quick tap (under 250ms, barely moved) = flip
-    if(elapsed<250&&Math.abs(dx)<10){
+
+    if(!moved){
+      // pure tap — reset position
       scene.style.transition='transform 0.22s ease';
-      scene.style.transform='translateX(0) rotate(0deg)';
-      flipCard();
-    } else if(Math.abs(dx)>90&&moved){
+      scene.style.transform='';
+      return;
+    }
+
+    if(direction==='h' && Math.abs(dx)>90){
       swipeCard(dx>0?'right':'left');
+    } else if(direction==='v' && Math.abs(dy)>60){
+      scene.style.transition='transform 0.22s ease';
+      scene.style.transform='';
+      if(dy<0 && !cardIsFlipped) flipCard();       // swipe UP → reveal
+      else if(dy>0 && cardIsFlipped) flipCard();   // swipe DOWN → hide
     } else {
       scene.style.transition='transform 0.22s ease';
-      scene.style.transform='translateX(0) rotate(0deg)';
+      scene.style.transform='';
     }
   }
 
   scene.addEventListener('touchstart',e=>{
-    if(e.touches.length>1) return; // ignore multi-touch
-    onStart(e.touches[0].clientX,e.touches[0].clientY);
-  },{passive:true});
-  scene.addEventListener('touchmove', e=>{
     if(e.touches.length>1) return;
-    onMove(e.touches[0].clientX,e.touches[0].clientY);
+    onStart(e.touches[0].clientX, e.touches[0].clientY);
   },{passive:true});
-  scene.addEventListener('touchend',  e=>{
+  scene.addEventListener('touchmove',e=>{
+    if(e.touches.length>1) return;
+    onMove(e.touches[0].clientX, e.touches[0].clientY);
+  },{passive:true});
+  scene.addEventListener('touchend',e=>{
     if(e.changedTouches.length>1) return;
-    onEnd(e.changedTouches[0].clientX);
+    onEnd(e.changedTouches[0].clientX, e.changedTouches[0].clientY);
   },{passive:true});
-  scene.addEventListener('mousedown', e=>{
+  scene.addEventListener('mousedown',e=>{
     onStart(e.clientX,e.clientY);
     const mm=e2=>onMove(e2.clientX,e2.clientY);
-    const mu=e2=>{document.removeEventListener('mousemove',mm);document.removeEventListener('mouseup',mu);onEnd(e2.clientX);};
+    const mu=e2=>{document.removeEventListener('mousemove',mm);document.removeEventListener('mouseup',mu);onEnd(e2.clientX,e2.clientY);};
     document.addEventListener('mousemove',mm); document.addEventListener('mouseup',mu);
   });
 
